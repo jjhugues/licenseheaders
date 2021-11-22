@@ -101,6 +101,18 @@ TYPE_SETTINGS = {
         "headerLinePrefix": "## ",
         "headerLineSuffix": None
     },
+    "coq": {
+        "extensions": [".v"],
+        "keepFirst": None,
+        "lineCommentStartPattern": None,
+        "lineCommentEndPattern": None,
+        "blockCommentStartPattern": re.compile(r'^\s*\(\*\*\*'),
+        "blockCommentEndPattern": re.compile(r'\*\*\*\)\s*$'),
+        "headerStartLine": "(***\n",
+        "headerEndLine": "***)\n",
+        "headerLinePrefix": " * ",
+        "headerLineSuffix": None
+    },
     "python": {
         "extensions": [".py"],
         "keepFirst": re.compile(r'^#!|^# +pylint|^# +-\*-|^# +coding|^# +encoding|^# +type|^# +flake8'),
@@ -385,6 +397,8 @@ def parse_command_line(argv):
                         help="Back up all files which get changed to a copy with .bak added to the name")
     parser.add_argument("-t", "--tmpl", dest="tmpl", default=None,
                         help="Template name or file to use.")
+    parser.add_argument("-r", "--remove", dest="removelicense", action="store_true",
+                        help="Remove license header.")
     parser.add_argument("-s", "--settings", dest="settings", default=None,
                         help="Settings file to use.")
     parser.add_argument("-y", "--years", dest="years", default=None,
@@ -852,6 +866,8 @@ def main():
             settings["projectname"] = arguments.projectname
         if arguments.projecturl:
             settings["projecturl"] = arguments.projecturl
+        if arguments.removelicense:
+            settings["removelicense"] = arguments.removelicense
         # if we have a template name specified, try to get or load the template
         if arguments.tmpl:
             opt_tmpl = arguments.tmpl
@@ -928,6 +944,7 @@ def main():
                     finfo["headStart"], finfo["headEnd"], finfo["haveLicense"], finfo["skip"], len(lines),
                     finfo["yearsLine"])
                 # if we have a template: replace or add
+                LOGGER.info("*** Remove license: {}".format(arguments.removelicense))
                 if template_lines:
                     make_backup(file, arguments)
                     if arguments.dry:
@@ -942,7 +959,7 @@ def main():
                                 have_license = finfo["haveLicense"]
                                 ftype = finfo["type"]
                                 skip = finfo["skip"]
-                                if head_start is not None and head_end is not None and have_license:
+                                if head_start is not None and head_end is not None and have_license and not arguments.removelicense:
                                     LOGGER.debug("Replacing header in file {}".format(file))
                                     # first write the lines before the header
                                     fw.writelines(lines[0:head_start])
@@ -951,13 +968,20 @@ def main():
                                     #  now write the rest of the lines
                                     fw.writelines(lines[head_end + 1:])
                                 else:
-                                    LOGGER.debug("Adding header to file {}, skip={}".format(file, skip))
-                                    fw.writelines(lines[0:skip])
-                                    fw.writelines(for_type(template_lines, ftype, type_settings))
-                                    if head_start is not None and not have_license:
-                                        # There is some header, but not license - add an empty line
-                                        fw.write("\n")
-                                    fw.writelines(lines[skip:])
+                                    if head_start is not None and head_end is not None and have_license and arguments.removelicense:
+                                        LOGGER.debug("Removing header in file {}".format(file))
+                                        # first write the lines before the header
+                                        fw.writelines(lines[0:head_start])
+                                        #  now write the rest of the lines
+                                        fw.writelines(lines[head_end + 1:])
+                                    else:
+                                        LOGGER.debug("Adding header to file {}, skip={}".format(file, skip))
+                                        fw.writelines(lines[0:skip])
+                                        fw.writelines(for_type(template_lines, ftype, type_settings))
+                                        if head_start is not None and not have_license:
+                                            # There is some header, but not license - add an empty line
+                                            fw.write("\n")
+                                        fw.writelines(lines[skip:])
                         # TODO: optionally remove backup if all worked well?
                 else:
                     # no template lines, just update the line with the year, if we found a year
